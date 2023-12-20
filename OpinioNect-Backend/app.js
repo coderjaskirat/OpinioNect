@@ -8,10 +8,18 @@ const path = require('path');
 const pinataSDK = require('@pinata/sdk');
 const axios = require('axios')
 const FormData = require('form-data')
-const { Client, PrivateKey, AccountCreateTransaction, AccountBalanceQuery, Hbar, TransferTransaction } = require("@hashgraph/sdk");
 require('dotenv').config();
 const { PINATA_API_KEY, PINATA_SECRET_KEY } = process.env;
 
+let fetchedArticlesFromAPI = [{
+    title: "Apple",
+    content: "Apple is a fruit",
+    author: "Insaan",
+    source: {
+        name: "Insaan",
+    },
+    publishedAt: "2021-06-01",
+}];
 let articleHashes = [];
 
 app.use(bodyParser.urlencoded({extended: true}));
@@ -39,70 +47,77 @@ const OpinioNect = new web3.eth.Contract(abi, deployedAddress);
 // API calls
 const newsAPIURL = 'https://newsapi.org/v2/everything?' +
     'q=Apple&' +
-    'from=2023-10-28&' +
+    'from=2023-09-10&' +
     'sortBy=popularity&' +
     'apiKey=8dca11ae84984fadb3facafbcacadc74';
 
 let newsAPIReq = new Request(newsAPIURL);
 
-// IPFS Interaction
-const articlesUpload = async () => {
+const fetchNews = async () => {
     const response = await fetch(newsAPIReq);
     const newsJson = await response.json();
-    const fetchedArticlesFromAPI = newsJson.articles;
+    fetchedArticlesFromAPI = newsJson.articles;
     console.log(fetchedArticlesFromAPI);
-    
-    for(i=0; i<fetchedArticlesFromAPI.length; i++){
+};
+// fetchNews();
 
-        const articleName = fetchedArticlesFromAPI[i].title;
-        const body = {
-            title: fetchedArticlesFromAPI[i].title,
-            content: fetchedArticlesFromAPI[i].content,
-            source: fetchedArticlesFromAPI[i].source.name,
-            author: fetchedArticlesFromAPI[i].author,
-            publishedAt: fetchedArticlesFromAPI[i].publishedAt,
-        };
-        const options = {
-            pinataMetadata: {
-                name: articleName,
-                keyvalues: {
-                    
-                }
-            },
-            pinataOptions: {
-                cidVersion: 0
+// IPFS Interaction
+const articlesUpload = async () => {
+    const articleName = fetchedArticlesFromAPI[0].title;
+    const body = {
+        // title: fetchedArticlesFromAPI[0].title,
+        content: fetchedArticlesFromAPI[0].content,
+        source: fetchedArticlesFromAPI[0].source.name,
+        author: fetchedArticlesFromAPI[0].author,
+        publishedAt: fetchedArticlesFromAPI[0].publishedAt,
+    };
+    const options = {
+        pinataMetadata: {
+            name: articleName,
+            keyvalues: {
+                
             }
-        };
-        const pinJSONFile = async () => {
-            try{
-                const res = await pinata.pinJSONToIPFS(body, options);
-                console.log(res);
-            }
-            catch(error){
-                console.log(error);
-            }
+        },
+        pinataOptions: {
+            cidVersion: 0
         }
-        pinJSONFile();
+    };
+    const pinJSONFile = async () => {
+        try{
+            const res = await pinata.pinJSONToIPFS(body, options);
+            console.log(res);
+        }
+        catch(error){
+            console.log(error);
+        }
     }
+    pinJSONFile();
 };
 // articlesUpload();
 
 const articlesFetch = async () => {
     const filters = {
         status: 'pinned',
-        pageLimit: 1000
+        pageLimit: 10
     };
     const getPinList = async () => {
         try{
             const res = await pinata.pinList(filters);
-            console.log(res.rows[0]);
+            // console.log(res);
+            for(i=0; i<res.rows.length; i++){
+                const articleHash = res.rows[i].ipfs_pin_hash;
+                articleHashes.push(articleHash);
+            }
+            // console.log(articleHashes);
         }
         catch(error){
             console.log(error);
         }
-    
+        // return(articleHashes);
     }
-    getPinList();
+    await getPinList();
+    // console.log(articleHashes);
+    return articleHashes;
 };
 // articlesFetch();
 
@@ -132,8 +147,8 @@ const getArticleHashes = async () => {
     for(let i = 0; i < length; i++){
         const articleHash = await OpinioNect.methods.articleHash(i).call();
         articleHashes.push(articleHash);
-        console.log(articleHash);
     }
+    console.log(articleHashes);
 };
 // getArticleHashes();
 
@@ -149,17 +164,20 @@ const getCommentsOnArticle = async (articleHash) => {
 }
 // getCommentsOnArticle("article hash hu me");
 
-const addArticleHash = async (articleHash) => {
+const addArticleHash = async (articleHashes) => {
     const providersAccounts = await web3.eth.getAccounts();
     const defaultAccount = providersAccounts[0];
-    const addArticleHash = await OpinioNect.methods.addArticle(articleHash).send({
-        from: defaultAccount,
-        gas: 1000000,
-        gasPrice: 10000000000,
-    });
-    console.log('Transaction Hash: ' + addArticleHash.transactionHash);
+    for(i = 0; i < articleHashes.length; i++){
+        const addArticleHash = await OpinioNect.methods.addArticle(articleHashes[i]).send({
+            from: defaultAccount,
+            gas: 1000000,
+            gasPrice: 10000000000,
+        });
+        console.log('Transaction Hash: ' + addArticleHash.transactionHash);
+    }
+    // console.log(articleHashes);
 }
-// addArticleHash("article hash hu me");
+// addArticleHash(articleHashes);
 
 const addComment = async (articleHash, comment) => {
     const providersAccounts = await web3.eth.getAccounts();
@@ -173,6 +191,17 @@ const addComment = async (articleHash, comment) => {
 }
 // addComment("article hash hu me", "me ek comment huu");
 
+const finalAddArticles = async () => {
+    try { 
+        let articleHashes = await articlesFetch();
+        await addArticleHash(articleHashes);
+        
+    } catch (error) {
+        console.error('Error occurred:', error);
+    }
+}
+// finalAddArticles();
+
 // Express
 app.get('/', (req, res) => {
     res.send('Hello World!')
@@ -185,21 +214,13 @@ app.route('/articles')
     .post((req, res) => {
         res.send("Hello World");
     });
-    // articles array from ipfs taking all the hashes from blockchain
-    // return object with key as article hash and value as article object
 
 app.get('/article/:articleName', (req, res) => {
     res.send('Hello World!')
 })
 
-app.get('/comments/:articleHash', (req, res) => {
+app.post('/comments', (req, res) => {
     res.send('Hello World!');
-    // comments of an article from blockchain
-})
-
-app.post('/comment/:commentHash', (req, res) => {
-    res.send('Hello World!')
-    // post a comment on blockchain
 })
 
 app.listen(port, () => {
