@@ -165,7 +165,9 @@ const getPinList = async () => {
 //     }
 // });
 // Set up a connection to the Ganache network
-const web3 = new Web3(new Web3.providers.HttpProvider('http://127.0.0.1:7545'));
+// const web3 = new Web3(new Web3.providers.HttpProvider('http://127.0.0.1:7545'));
+const web3 = new Web3(new Web3.providers.HttpProvider('https://polygon-mumbai.infura.io/v3/189fddc73b7a4e6aaef7ed2a7a0545dc'));
+// web3.eth.getBlock('latest').then(console.log);
 
 // Log the current block number to the console
 // web3.eth
@@ -194,8 +196,9 @@ const abi = require('./OpinioNectAbi.json');
 const MyContract = new web3.eth.Contract(abi);
 
 async function deploy() {
-    const providersAccounts = await web3.eth.getAccounts();
-    const defaultAccount = providersAccounts[0];
+    // const providersAccounts = await web3.eth.getAccounts();
+    // const defaultAccount = providersAccounts[0];
+    const defaultAccount = 'd78641955d04d4a3de257e653c36281ef4cfc72e923345568a801cdf93a42b0d';
     console.log('deployer account:', defaultAccount);
 
     const myContract = MyContract.deploy({
